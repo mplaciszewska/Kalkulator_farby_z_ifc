@@ -3,6 +3,14 @@ import customtkinter as ctk
 import tkinter.messagebox
 import tkinter.filedialog
 import re
+from pymongo import MongoClient
+
+from URI import URI
+
+client = MongoClient(URI)
+db = client["ifc"]
+collection = db["rooms"]
+
 
 def get_space_properties(space):
     flaeche = hoehe = obwod = 0.0
@@ -47,7 +55,7 @@ def get_element_area(element):
         print(f"Błąd przy pobieraniu powierzchni elementu {element.GlobalId}: {e}")
     return 0.0
 
-def analyze_rooms(filepath):
+def analyze_rooms(filepath, print_output=True):
     try:
         model = ifcopenshell.open(filepath)
     except Exception as e:
@@ -58,8 +66,6 @@ def analyze_rooms(filepath):
     if not spaces:
         tkinter.messagebox.showerror("Ooopsie", f"Brak pomieszczeń w pliku IFC.")
         return
-
-    print(f"\n== ZNALEZIONE POMIESZCZENIA: {len(spaces)} ==")
 
     boundaries = model.by_type("IfcRelSpaceBoundary")
     
@@ -87,6 +93,8 @@ def analyze_rooms(filepath):
             area = get_element_area(element)
             room_doors[gid].append(area)
 
+    room_data = {}
+
     for space in spaces:
         gid = space.GlobalId
         name = space.LongName or space.Name or "[bez nazwy]"
@@ -101,23 +109,54 @@ def analyze_rooms(filepath):
 
         pow_netto = round(pow_sci - suma_okien - suma_drzwi, 2)
 
-        print(f"\nPomieszczenie ID: {gid}")
-        print(f"  Nazwa: {name}")
-        print(f"  Powierzchnia pomieszczenia: {flaeche} m²")
-        print(f"  Wysokość: {hoehe} m")
-        print(f"  Obwód: {obwod} m")
-        print(f"  Powierzchnia ścian brutto: {round(pow_sci, 2)} m²")
-        print(f"  Powierzchnia ścian netto: {pow_netto} m²")
+        if print_output:
+            print(f"\n== ZNALEZIONE POMIESZCZENIA: {len(spaces)} ==")
 
-        if okna:
-            print(f"  Okna: {len(okna)} (suma powierzchni: {suma_okien} m²)")
-        else:
-            print("  Okna: brak")
+            print(f"\nPomieszczenie ID: {gid}")
+            print(f"  Nazwa: {name}")
+            print(f"  Powierzchnia pomieszczenia: {flaeche} m²")
+            print(f"  Wysokość: {hoehe} m")
+            print(f"  Obwód: {obwod} m")
+            print(f"  Powierzchnia ścian brutto: {round(pow_sci, 2)} m²")
+            print(f"  Powierzchnia ścian netto: {pow_netto} m²")
 
-        if drzwi:
-            print(f"  Drzwi: {len(drzwi)} (suma powierzchni: {suma_drzwi} m²)")
-        else:
-            print("  Drzwi: brak")
+            if okna:
+                print(f"  Okna: {len(okna)} (suma powierzchni: {suma_okien} m²)")
+            else:
+                print("  Okna: brak")
 
-filepath = "AC20-Institute-Var-2.ifc"
-analyze_rooms(filepath)
+            if drzwi:
+                print(f"  Drzwi: {len(drzwi)} (suma powierzchni: {suma_drzwi} m²)")
+            else:
+                print("  Drzwi: brak")
+
+        room_data[gid] = {
+            'ifc_model': filepath,
+            "name": name,
+            "net_wall_area": pow_netto,
+            "gross_wall_area": round(pow_sci, 2),
+            "height": hoehe,
+            "perimeter": obwod,
+            "windows": {
+                "count": len(okna),
+                "total_area": suma_okien
+            },
+            "doors": {
+                "count": len(drzwi),
+                "total_area": suma_drzwi
+            }
+        }
+    if room_data:
+        for gid, room in room_data.items():
+            room["_id"] = gid
+            collection.replace_one({"_id": gid}, room, upsert=True)
+
+        print(f"\nZapisano {len(room_data)} pomieszczeń do MongoDB.")
+
+        return True
+    
+    return False
+
+if __name__ == "__main__":
+    filepath = "AC20-Institute-Var-2.ifc"
+    analyze_rooms(filepath, print_output=False)
