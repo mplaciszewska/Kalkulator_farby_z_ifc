@@ -45,24 +45,8 @@ def show_error(title, message):
 room_wall_map = {}
 room_display_to_id = {}
 
-def load_ifc_file():
+def load_database():
     global room_wall_map, room_display_to_id
-
-    # filepath = tkinter.filedialog.askopenfilename(filetypes=[("IFC files", "*.ifc")])
-    # if not filepath:
-    #     return
-
-    # existing = list(collection.find({"ifc_model": filepath}))
-    # if not existing:
-    #     success = analyze_rooms(filepath, False)
-    #     if not success:
-    #         show_error("Błąd", "Nie udało się przetworzyć pliku IFC.")
-    #         return
-    #     existing = list(collection.find({"ifc_model": filepath}))
-    #     print("Zapisano nowe dane do bazy danych.")
-    # else:
-    #     print("Znaleziono istniejące dane w bazie danych.")
-
     rooms = list(collection.find({})) 
     if not rooms:
         show_error("Błąd", "Brak zapisanych pomieszczeń w bazie danych.")
@@ -76,11 +60,39 @@ def load_ifc_file():
     room_dropdown.configure(values=list(room_display_to_id.keys()))
     room_dropdown.set(next(iter(room_display_to_id)))
 
-load_button = ctk.CTkButton(app, text="Wczytaj pokoje z bazy", command=load_ifc_file, font=button_font)
-load_button.pack(pady=(20, 5))
+# def load_ifc_file():
+#     global room_wall_map, room_display_to_id
 
-# load_button = ctk.CTkButton(app, text="Wczytaj plik IFC", command=load_ifc_file, font=button_font)
-# load_button.pack(pady=(15, 5))
+#     filepath = tkinter.filedialog.askopenfilename(filetypes=[("IFC files", "*.ifc")])
+#     if not filepath:
+#         return
+
+#     existing = list(collection.find({"ifc_model": filepath}))
+
+#     if not existing:
+#         success = analyze_rooms(filepath, False)
+#         if not success:
+#             show_error("Błąd", "Nie udało się przetworzyć pliku IFC.")
+#             return
+#         existing = list(collection.find({"ifc_model": filepath}))
+#         print("Zapisano nowe dane do bazy danych.")
+
+#     else:
+#         print("Znaleziono istniejące dane w bazie danych.")
+
+#     room_wall_map = {room["_id"]: room for room in existing}
+#     room_display_to_id = {
+#         f"{room['name']} ({room['_id'][:6]})": room["_id"] for room in existing
+#     }
+
+#     room_dropdown.configure(values=list(room_display_to_id.keys()))
+#     room_dropdown.set(next(iter(room_display_to_id)))
+
+load_button = ctk.CTkButton(app, text="Wczytaj pokoje z bazy", command=load_database, font=button_font)
+load_button.pack(pady=(15, 5))
+
+# load_ifc_button = ctk.CTkButton(app, text="Wczytaj plik IFC", command=load_ifc_file, font=button_font)
+# load_ifc_button.pack(pady=(15, 5))
 
 paint_label = ctk.CTkLabel(app, text="Wydajność farby (m²/L):", font=label_font)
 paint_label.pack(pady=(15, 5))
@@ -108,8 +120,28 @@ def calculate_paint():
         gid = room_display_to_id[room_display]
         area = room_wall_map[gid]["net_wall_area"]
 
+        if not area:
+            raise ValueError("Nie znaleziono powierzchni ścian dla wybranego pokoju")
+        if area <= 0:
+            raise ValueError("Powierzchnia ścian musi być większa od 0")
+        if not room_display:
+            raise ValueError("Nie wybrano pokoju")
+        if not room_wall_map:
+            raise ValueError("Brak danych o pokojach w bazie danych")
+        if not layer_entry.get().isdigit():
+            raise ValueError("Liczba warstw musi być liczbą całkowitą")
+        if not paint_entry.get().replace(",", ".").isdigit():
+            raise ValueError("Wydajność farby musi być liczbą")
+
         efficiency = float(paint_entry.get().replace(",", "."))
         layers = int(layer_entry.get())
+
+        if not layers:
+            raise ValueError("Podaj liczbę warstw")
+        if not efficiency:
+            raise ValueError("Podaj wydajność farby")
+        if not room_display:
+            raise ValueError("Wybierz pokój z listy")
 
         if efficiency <= 0:
             raise ValueError("Wydajność farby musi być większa od 0")
@@ -119,7 +151,7 @@ def calculate_paint():
         liters_needed = area / efficiency * layers
 
         result_label.configure(
-            text=f"Powierzchnia ścian: {area:.2f} m²\n\nPotrzeba: {liters_needed:.2f} L farby"
+            text=f"Powierzchnia ścian: {area:.2f} m²\n\nPotrzeba: {liters_needed:.2f} l farby"
         )
     except Exception as e:
         show_error("Ooopsie", f"Wystąpił błąd:\n{e}")
